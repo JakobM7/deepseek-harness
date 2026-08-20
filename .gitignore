@@ -39,3 +39,11 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+
+# Windows SEA launcher outputs and its local build cache.
+/dsh-window.exe
+/dsh-window.log
+/tools/dsh-window/dsh-window.blob
+/tools/dsh-window/sea-config.json
+/tools/dsh-window/.npminstall/
+/tools/dsh-window/.npm-cache/
