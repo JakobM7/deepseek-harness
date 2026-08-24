@@ -3,8 +3,8 @@
  * dictionaries, mirroring LocaleRuntime's resolution order (first dictionary
  * that owns the key wins, then the key itself stays visible) and its
  * `{name}` template interpolation. Specs stub the framework-injected `t`
- * seat with `makeTranslate(zh, commonZh)` instead of re-implementing the
- * chain per suite.
+ * seat with `makeTranslate(namespaceCopy, commonCopy)` instead of
+ * re-implementing the chain per suite.
  */
 
 /**

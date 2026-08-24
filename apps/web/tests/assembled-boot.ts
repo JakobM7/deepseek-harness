@@ -150,10 +150,8 @@ let unmount: (() => Promise<void>) | undefined
 export function installAssembledBootEnv(): void {
   beforeEach(() => {
     localStorage.clear()
-    // The locale service derives its provisional locale from the browser and
-    // takes an explicit choice only from Host settings, which this lane's
-    // fixture transport does not serve; pinning the navigator is what selects
-    // English here.
+    // Keep browser language metadata deterministic for this assembled boot
+    // lane; the product itself has one shipped English locale.
     Object.defineProperty(navigator, 'languages', { value: ['en-US'], configurable: true })
     Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true })
     document.title = 'DeepSeek Harness'

@@ -11,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import { zh } from '../src/client/locales.ts'
+import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
+import { en } from '../src/client/locales.ts'
 import type { MenuState, TriggerHit } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { MenuView } from '../src/client/MenuView.tsx'
 
@@ -55,7 +55,7 @@ afterEach(() => {
 // The framework-injected t seat, stubbed over the zh dictionaries (the
 // default locale); the stub mirrors the LocaleRuntime key fallback, so an
 // unknown source comes back verbatim (its raw name).
-const t = makeTranslate(zh, commonZh)
+const t = makeTranslate(en, commonEn)
 
 function mount(state: MenuState) {
   const menu = createSnapshotStore<MenuState>(state)

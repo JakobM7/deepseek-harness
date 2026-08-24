@@ -2,11 +2,8 @@
 /**
  * `<html lang>` tracks the active locale.
  *
- * The served markup declares one language, but the resolved locale may differ
- * (browser detection, or a stored Host preference adopted after activation),
- * and it changes again whenever the user switches. Assistive technology and
- * browser features read this attribute, so a stale value misreports the
- * document language rather than merely looking untidy.
+ * The product ships one locale, so the document language remains English
+ * regardless of browser language or stored preference.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -55,8 +52,8 @@ describe('document language', () => {
     // The served markup declares the product default; the plugin must not
     // depend on that value already being correct.
     document.documentElement.lang = 'en'
-    Object.defineProperty(navigator, 'languages', { value: ['zh-CN'], configurable: true })
-    Object.defineProperty(navigator, 'language', { value: 'zh-CN', configurable: true })
+    Object.defineProperty(navigator, 'languages', { value: ['fr-FR'], configurable: true })
+    Object.defineProperty(navigator, 'language', { value: 'fr-FR', configurable: true })
   })
 
   afterEach(() => {
@@ -67,26 +64,20 @@ describe('document language', () => {
     delete own.language
   })
 
-  it('states the resolved locale at activation, not the value the markup shipped', async () => {
-    // A Chinese browser resolves zh even though the markup said en.
+  it('states English at activation, not merely the value the markup shipped', async () => {
     const { locale } = await bench()
-    expect(locale.getLocale().active).toBe('zh')
-    expect(langOf()).toBe('zh-CN')
-  })
-
-  it('follows a locale switch in both directions with BCP 47 tags', async () => {
-    const { locale } = await bench()
-    expect(langOf()).toBe('zh-CN')
-    locale.setLocale('en')
-    // `en` needs no region; `zh` names its script variant, which bare `zh`
-    // leaves ambiguous for pronunciation and font selection.
+    expect(locale.getLocale().active).toBe('en')
     expect(langOf()).toBe('en')
-    locale.setLocale('zh')
-    expect(langOf()).toBe('zh-CN')
   })
 
-  it('follows an explicit Host preference that overrides browser detection', async () => {
-    // Stored preference wins over the zh browser pinned above.
+  it('keeps the English BCP 47 tag when English is selected', async () => {
+    const { locale } = await bench()
+    expect(langOf()).toBe('en')
+    locale.setLocale('en')
+    expect(langOf()).toBe('en')
+  })
+
+  it('follows an explicit English Host preference', async () => {
     const { locale } = await bench('en')
     await vi.waitFor(() => { expect(locale.getLocale().active).toBe('en') })
     await vi.waitFor(() => { expect(langOf()).toBe('en') })
