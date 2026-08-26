@@ -7,6 +7,7 @@
 
 import { Context, FiberState, Service } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
+import { isPromise } from 'node:util/types'
 import z from '@deepseek-ai/schemastery'
 import { emitAgentEvent } from '@deepseek-ai/dsh-agent'
 import type {
@@ -172,6 +173,20 @@ declare module '@deepseek-ai/cordis' {
   }
   interface Events {
     /**
+     * Synchronous, deployment-wide composition hook over a fully constructed
+     * but still unpublished Agent scope. It fires before registry insertion,
+     * creation announcements, session-start and the first prompt assembly.
+     * Throwing vetoes creation and the factory rolls the whole Agent scope
+     * back. Returning a Promise is rejected because configured fresh agents
+     * preserve their synchronous startup contract; async caller-specific
+     * composition belongs in AgentSetup on create/resume.
+     *
+     * `owner` is the process-local creator Agent, not durable session lineage;
+     * undefined identifies a runtime root.
+     * @mode emit
+     */
+    'agent-loop/unpublished-setup'(payload: { agent: Agent; owner: Agent | undefined }): void
+    /**
      * A declarative agent entry failed before it could publish a live agent.
      * Consumers that buffer work for the configured identity use this
      * transient signal to reject that work instead of waiting forever. Normal
@@ -195,7 +210,7 @@ export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
 export interface LauncherAgentIdentity {
   /** Exact session id to create fresh or resume. */
   id: SessionId
-  /** Resume existing persisted history instead of creating the session fresh. */
+  /** Resume existing persisted history instead of creating a fresh session. */
   resume: boolean
 }
 
@@ -403,6 +418,26 @@ export class AgentLoop extends Service implements AgentFactory {
     }
   }
 
+  /**
+   * Run deployment-wide synchronous setup against one constructed but still
+   * unpublished Agent. This is intentionally below caller AgentSetup: the hook
+   * covers configured fresh roots too, while caller setup retains its async
+   * transaction for per-creation composition such as preset mounting.
+   */
+  private runUnpublishedSetup(agent: Agent, owner: Agent | undefined): void {
+    const args: unknown[] = ['agent-loop/unpublished-setup', { agent, owner }]
+    for (const callback of this.ctx.events.dispatch('emit', args)) {
+      const returned: unknown = callback(...args)
+      if (!isPromise(returned)) continue
+      // Do not leak a rejection from a listener that violated the synchronous
+      // hook contract. The setup is vetoed regardless of eventual settlement.
+      void Promise.resolve(returned).catch((error: unknown) => {
+        this.ctx.logger.warn(`agent "${agent.id}": unpublished-setup listener rejected: ${errorChain(error)}`)
+      })
+      throw new TypeError('agent-loop/unpublished-setup listeners must be synchronous')
+    }
+  }
+
   /** Restore a materialized exact config identity on remount, or create it on first use. */
   private async restoreOrCreateConfigured(
     ownerCtx: Context,
@@ -548,6 +583,8 @@ export class AgentLoop extends Service implements AgentFactory {
     try {
       const agent = machine = new ReactLoopAgent(loopCtx, id, options, session)
       machineReady.resolve()
+      assertLive()
+      this.runUnpublishedSetup(agent, ownerCtx.agent)
       assertLive()
 
       return {
