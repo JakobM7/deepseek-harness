@@ -1,77 +1,92 @@
 /**
- * Pure concession-chain column solver for the three-column AppFrame.
- * Chain order is fixed by contract: keep center >= CENTER_MIN by shrinking
- * details, then auto-closing it (derived zero width — preferred width
- * preferences are never rewritten, so widening the window restores them).
- * The sidebar never concedes: its rendered width is always the drag
- * preference (or the collapsed rail), and center absorbs any remaining
- * deficit as the last resort. Inputs are the layout store's plain width
- * preferences (0 = closed); a closed sidebar resolves to the fixed
- * SIDEBAR_COLLAPSED control rail while closed details resolve to zero width.
- * The SIDEBAR_AUTO_COLLAPSE breakpoint is consumed by AppFrame, which decides
- * the effective sidebar preference before solving; the solver itself stays
- * breakpoint-free.
+ * Pure concession-chain solver for the three-column AppFrame. The right-hand
+ * column can be owned either by the ordinary Details panel or by a temporary
+ * auxiliary surface. Sizing is data, not feature-specific conditionals.
  */
 
-/** Resolved widths for one frame; center may drop below CENTER_MIN only at the final fallback. */
 export interface Columns { sidebar: number; center: number; details: number }
 
-// Contract-frozen geometry: the three-column concession chain's fixed points.
-/** Center column floor; only the final fallback may go below it. */
+export interface PanelSizing {
+  readonly preferredWidth: number
+  readonly minWidth: number
+  readonly maxWidth: number
+}
+
+export type PanelSizingRequest = Partial<PanelSizing>
+
 export const CENTER_MIN = 640
-/** Sidebar drag clamp floor. */
 export const SIDEBAR_MIN = 264
-/** Sidebar drag clamp ceiling. */
 export const SIDEBAR_MAX = 420
-/** Sidebar width before any user drag. */
 export const SIDEBAR_DEFAULT = 280
-/** Closed-sidebar rail: a 24px icon column between 16px horizontal paddings. */
 export const SIDEBAR_COLLAPSED = 56
-/** Viewport width below which the sidebar auto-collapses to the rail (deepsuite
- * LG breakpoint); a manual toggle below it re-expands over the squeezed center
- * (stores.ts narrowExpanded). */
 export const SIDEBAR_AUTO_COLLAPSE = 1024
-/** Details drag clamp floor. */
 export const DETAILS_MIN = 300
-/** Details drag clamp ceiling. */
 export const DETAILS_MAX = 520
-/** Details width before any user drag. */
 export const DETAILS_DEFAULT = 360
 
-/**
- * Clamp a panel width into its contract range.
- * @param px - requested width.
- * @param min - range lower bound.
- * @param max - range upper bound.
- * @returns the clamped width.
- */
+/** Hard safety rails for extension-provided auxiliary sizing requests. */
+export const AUXILIARY_ABSOLUTE_MIN = 280
+export const AUXILIARY_ABSOLUTE_MAX = 1600
+
+export const DETAILS_PANEL_SIZING: PanelSizing = {
+  preferredWidth: DETAILS_DEFAULT,
+  minWidth: DETAILS_MIN,
+  maxWidth: DETAILS_MAX,
+}
+
+export const AUXILIARY_PANEL_SIZING: PanelSizing = {
+  preferredWidth: 820,
+  minWidth: 500,
+  maxWidth: 1200,
+}
+
 export function clampWidth(px: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(px)))
 }
 
-/**
- * Solve the three column widths for one viewport frame. Pure: no hysteresis —
- * the output is a function of (viewport, preferences) only, so recovery on
- * re-widening is automatic. Preferences re-clamp here because they cross the
- * store boundary and callers may still supply stale ranges.
- * @param viewport - available frame width in px.
- * @param sidebar - sidebar width preference in px (0 = closed).
- * @param details - details width preference in px (0 = closed).
- * @returns resolved widths; details 0 means visually closed (never unmounted), while a closed sidebar keeps its compact rail.
- */
-export function computeColumns(viewport: number, sidebar: number, details: number): Columns {
-  // The sidebar is fixed at its preference (or the rail) — it never concedes.
-  const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
-  const d0 = details === 0 ? 0 : clampWidth(details, DETAILS_MIN, DETAILS_MAX)
+export function resolvePanelSizing(
+  request: PanelSizingRequest | undefined,
+  fallback: PanelSizing = DETAILS_PANEL_SIZING,
+): PanelSizing {
+  const requestedMin = Number.isFinite(request?.minWidth) ? request?.minWidth ?? fallback.minWidth : fallback.minWidth
+  const requestedMax = Number.isFinite(request?.maxWidth) ? request?.maxWidth ?? fallback.maxWidth : fallback.maxWidth
+  const minWidth = clampWidth(requestedMin, AUXILIARY_ABSOLUTE_MIN, AUXILIARY_ABSOLUTE_MAX)
+  const maxWidth = clampWidth(Math.max(requestedMax, minWidth), minWidth, AUXILIARY_ABSOLUTE_MAX)
+  const requestedPreferred = Number.isFinite(request?.preferredWidth)
+    ? request?.preferredWidth ?? fallback.preferredWidth
+    : fallback.preferredWidth
+  return {
+    minWidth,
+    maxWidth,
+    preferredWidth: clampWidth(requestedPreferred, minWidth, maxWidth),
+  }
+}
 
-  // Step 1: everything fits at preferred widths.
+export function samePanelSizing(a: PanelSizing, b: PanelSizing): boolean {
+  return a.preferredWidth === b.preferredWidth && a.minWidth === b.minWidth && a.maxWidth === b.maxWidth
+}
+
+/**
+ * Solve the frame widths. `details` is the active right-column width
+ * preference (0 = no right-hand surface). `detailsSizing` describes whichever
+ * surface currently owns that column, so the normal Details panel keeps its
+ * historical 300–520 contract while a generic auxiliary panel may request a
+ * wider range.
+ */
+export function computeColumns(
+  viewport: number,
+  sidebar: number,
+  details: number,
+  detailsSizing: PanelSizing = DETAILS_PANEL_SIZING,
+): Columns {
+  const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
+  const sizing = resolvePanelSizing(detailsSizing, DETAILS_PANEL_SIZING)
+  const d0 = details === 0 ? 0 : clampWidth(details, sizing.minWidth, sizing.maxWidth)
+
   if (s + d0 + CENTER_MIN <= viewport) return { sidebar: s, center: viewport - s - d0, details: d0 }
 
-  // Step 2: shrink details toward its minimum.
-  const d1 = d0 === 0 ? 0 : Math.max(DETAILS_MIN, viewport - s - CENTER_MIN)
+  const d1 = d0 === 0 ? 0 : Math.max(sizing.minWidth, viewport - s - CENTER_MIN)
   if (s + d1 + CENTER_MIN <= viewport) return { sidebar: s, center: CENTER_MIN, details: d1 }
 
-  // Step 3: auto-close details (derived — preferences untouched); center
-  // absorbs any remaining deficit (may drop below CENTER_MIN).
   return { sidebar: s, center: Math.max(0, viewport - s), details: 0 }
 }
