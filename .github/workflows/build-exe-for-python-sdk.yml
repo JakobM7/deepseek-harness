@@ -8,6 +8,23 @@ name: Build single-exe
 # (remove and reapply to rerun), or call it from the Python release workflow.
 # Checkout uses the triggering ref, so dispatch needs no separate ref input.
 on:
+  workflow_call:
+    inputs:
+      targets:
+        description: Comma-separated pkg targets to build; empty builds all three.
+        type: string
+        required: false
+        default: ''
+      release:
+        description: Run as the native builder for the Python release workflow.
+        type: boolean
+        required: false
+        default: false
+      ci:
+        description: Run as the required Linux x64 Python runtime pull-request check.
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
     inputs:
       targets:
